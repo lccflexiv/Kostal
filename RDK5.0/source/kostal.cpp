@@ -66,6 +66,7 @@ namespace {
 
     std::mutex g_printDataMutex;
     std::mutex SPImutex;
+    int g_count = 0;
 }
 
 //test function uint8 to binary 
@@ -74,11 +75,8 @@ void toBinary(uint8_t a)
     uint8_t i;
 
     for(i=0x80;i!=0;i>>=1)
-        printf("%c",(a&i)?'1':'0'); 
+        printf("%c /n",(a&i)?'1':'0'); 
 }
-
-
-
 
 //Quaternion to Euler
 
@@ -106,10 +104,9 @@ Struct Quaternion_to_Euler (double w, double x, double y, double z)
 // read robot data and push robot data &SPI data to stack
 
 void highPriorityPeriodicTask(
-    flexiv::RobotStates* robotStates,
-    flexiv::Robot* robot,
-    flexiv::PlanInfo* planInfo
-    )
+                                flexiv::RobotStates* robotStates,
+                                flexiv::Robot* robot,
+                                flexiv::PlanInfo* planInfo)
 {
     while (true) {
         // Wake up every second to do something
@@ -134,8 +131,9 @@ void highPriorityPeriodicTask(
         if (g_printData.nodeName == "Stop"){
             stackFlag = false;
         }
+        
         if (stackFlag == true){
-            std::cout<<SPI_stack.size()<<g_printData.nodeName<<std::endl;  
+            //std::cout<<SPI_stack.size()<<g_printData.nodeName<<std::endl;  
             outdata[0]=g_printData.tcp_pose[0];
             outdata[1]=g_printData.tcp_pose[1];
             outdata[2]=g_printData.tcp_pose[2];
@@ -205,13 +203,34 @@ void SPIdata_collection()
   while (true){
         uint8_t read_buffer[10240] = {0};
         int32_t read_data_num = 0;
-        ret = VSI_SlaveReadBytes(VSI_USBSPI, 0, read_buffer, &read_data_num,100);
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
+        ret = VSI_SlaveReadBytes(VSI_USBSPI, 0, read_buffer, &read_data_num,2);
         if (ret != ERR_SUCCESS){
             printf("Read data error!\n");
             
         }
         else{
-            if (read_data_num == 16){
+            // if (read_data_num > 0)
+            // {
+            //     printf("Read data num: %d\n",read_data_num);
+            //     printf("Read data(Hex):");
+            //     for (int i = 0; i < read_data_num; i++){
+            //         printf("%02X ",read_buffer[i]);
+            //     }
+            //     printf("\n");
+            // }else{
+            //     printf("No data!\n");
+            // }
+            // if (read_data_num == 16){
+            //     {
+            //         std::lock_guard<std::mutex> lock(SPImutex);
+            //         for (int i = 0; i < read_data_num; i++){
+            //             SPIout[i]=read_buffer[i];
+            //         }
+            //     }
+            // }
+            if (read_data_num == 16)
+            {
                 {
                     std::lock_guard<std::mutex> lock(SPImutex);
                     for (int i = 0; i < read_data_num; i++){
@@ -220,6 +239,7 @@ void SPIdata_collection()
                 }
             }
             else{
+                if (read_data_num>0){g_count++;}
             }
              
         }   
@@ -227,13 +247,12 @@ void SPIdata_collection()
 }
 
 
-int sendRobotPlan(
-    flexiv::Robot* robot,
-    flexiv::RobotStates* robotStates,
-    flexiv::PlanInfo* planInfo, 
-    std::string planName,
-    std::string fileName,
-    std::string filePath)
+int sendRobotPlan(flexiv::Robot* robot,
+                    flexiv::RobotStates* robotStates,
+                    flexiv::PlanInfo* planInfo, 
+                    std::string planName,
+                    std::string fileName,
+                    std::string filePath)
 {
     std::thread SPIthread(SPIdata_collection);
     std::thread robthread(std::bind(hptask,robotStates,robot,planInfo));
@@ -244,7 +263,7 @@ int sendRobotPlan(
     {
         std::lock_guard<std::mutex> lock(SPImutex);
         do {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         } while (data_stack_rev.size()!=0);
     }
 
@@ -256,7 +275,7 @@ int sendRobotPlan(
     robot->getSystemStatus(&systemStatus);
 
     do {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         robot->getSystemStatus(&systemStatus);
 
     } while (systemStatus.m_programRunning != true);
@@ -267,8 +286,6 @@ int sendRobotPlan(
         robot->getPlanInfo(planInfo);
     {
         g_printData.nodeName = planInfo->m_nodeName;
-
-
     }
     } while (systemStatus.m_programRunning == true);
 
@@ -291,7 +308,7 @@ int sendRobotPlan(
     std::ofstream MyExcelFile;
     std::string tmpFileName= filePath+fileName+".csv";
     MyExcelFile.open(tmpFileName);
-    std::cout<< tmpFileName<<std::endl;
+    //std::cout<< tmpFileName<<std::endl;
     
     //add file headers  
     MyExcelFile << "NodeName"<<",";
@@ -307,8 +324,10 @@ int sendRobotPlan(
     MyExcelFile << "SPI1-5"<<","<< "SPI1-6"<<","<< "SPI1-7"<<",";
     MyExcelFile << std::endl; 
 
-    std::cout<< ' ' <<data_stack_rev.size() << std::endl;
-    std::cout<< ' ' <<SPI_stack_rev.size() << std::endl;
+    std::cout<<"The total data size is: "<<data_stack_rev.size() << std::endl;
+    std::cout<<"The short data count is: "<<g_count<<std::endl;
+    std::cout<<"Error rate is: "<<(double)g_count/(double)(data_stack_rev.size())<<"%"<<std::endl;
+    //std::cout<< ' ' <<SPI_stack_rev.size() << std::endl;
 
     while (!data_stack_rev.empty())            
     {
@@ -342,8 +361,8 @@ int sendRobotPlan(
         
         //Write SPIdata
         for (auto i = 0; i < 16; i++){
-        MyExcelFile << std::setfill('0') << std::setw(2) << std::right<<std::hex ;
-        MyExcelFile << + static_cast<uint8_t>(SPI_stack_rev.top()[i])<<",";
+            MyExcelFile << std::setfill('0') << std::setw(2) << std::right<<std::hex ;
+            MyExcelFile << + static_cast<uint8_t>(SPI_stack_rev.top()[i])<<",";
         }
         MyExcelFile << std::endl; 
 
@@ -360,6 +379,7 @@ int sendRobotPlan(
     }
 
     MyExcelFile.close();
+    std::cout<<"The final data is: ";
     std::cout<< tmpFileName<<std::endl;
 
 
@@ -374,7 +394,7 @@ int main(int argc, char* argv[])
     std::string robotIP = "192.168.2.100";
 
     // IP of the workstation PC running this program
-    std::string localIP = "192.168.2.104";
+    std::string localIP = "192.168.2.103";
 
     // RDK Initialization
     //=============================================================================
@@ -478,11 +498,14 @@ int main(int argc, char* argv[])
     std::time_t file_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::string time_str = std::ctime(&file_time);
 
-    std::string planName=argv[1];
-    std::string fileName=argv[1]+time_str;
+    // std::string planName=argv[1];
+    // std::string fileName=argv[1]+time_str;
+    // std::string filePath="./data/";
+    std::string planName="Kostal-MainPlan";
+    std::string fileName=planName+time_str;
     std::string filePath="./data/";
 
     int success_flag = sendRobotPlan(&robot, &robotStates, &planInfo, planName, fileName ,filePath);
-    std::cout << success_flag << std::endl;
+    //std::cout << success_flag << std::endl;
     return 0;
 }

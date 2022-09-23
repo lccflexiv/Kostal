@@ -25,11 +25,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/source)
 
 # list of examples
 set(SOURCE_LIST
-  
-  # display_robot_states
-  # test
-  # showplanlist
+
   kostal
+  #kostal_test
 )
 
 foreach(source ${SOURCE_LIST})

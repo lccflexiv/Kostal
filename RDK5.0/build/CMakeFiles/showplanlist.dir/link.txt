@@ -1,1 +1,0 @@
-/usr/bin/c++  -O3 -DNDEBUG  -rdynamic CMakeFiles/showplanlist.dir/source/showplanlist.cpp.o  -o source/showplanlist   -L/home/flexiv/Documents/Case/2022/Kostal/RDK5.0/thirdparty/Ginko/lib/linux_64bit  -Wl,-rpath,/home/flexiv/Documents/Case/2022/Kostal/RDK5.0/thirdparty/Ginko/lib/linux_64bit ../lib/libFlexivRdk.a -lGinkgo_Driver -lanl -pthread 
